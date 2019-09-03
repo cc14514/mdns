@@ -1,37 +1,64 @@
-mdns
-====
+# example
 
-Simple mDNS client/server library in Golang. mDNS or Multicast DNS can be
-used to discover services on the local network without the use of an authoritative
-DNS server. This enables peer-to-peer discovery. It is important to note that many
-networks restrict the use of multicasting, which prevents mDNS from functioning.
-Notably, multicast cannot be used in any sort of cloud, or shared infrastructure
-environment. However it works well in most office, home, or private infrastructure
-environments.
+```golang
 
-Using the library is very simple, here is an example of publishing a service entry:
+package main
 
-    // Setup our service export
-    host, _ := os.Hostname()
-    info := []string{"My awesome service"},
-    service, _ := NewMDNSService(host, "_foobar._tcp", "", "", 8000, nil, info)
+import (
+	"fmt"
+	"github.com/cc14514/mdns"
+	"os"
+	"time"
+)
 
-    // Create the mDNS server, defer shutdown
-    server, _ := mdns.NewServer(&mdns.Config{Zone: service})
-    defer server.Shutdown()
+var tag = "_foobar._tcp"
 
+func run() {
+	// Setup our service export
+	host, _ := os.Hostname()
+	n := time.Now().Unix()
+	selfid := fmt.Sprintf("myid:%d", n)
+	fmt.Println("self.id", selfid)
+	service, _ := mdns.NewMDNSService(host, tag, "", "", 8000, nil, []string{selfid})
+	// Create the mDNS server, defer shutdown
+	server, _ := mdns.NewServer(&mdns.Config{Zone: service})
+	defer server.Shutdown()
+	ticker := time.NewTicker(time.Second * 5)
 
-Doing a lookup for service providers is also very simple:
+	for {
+		//execute mdns query right away at method call and then with every tick
+		entriesCh := make(chan *mdns.ServiceEntry, 16)
+		go func() {
+			for entry := range entriesCh {
+				if entry != nil && entry.Info != selfid {
+					fmt.Println(" 🏠-- 👬 -->", entry.Info, entry.InfoFields)
+				}
+			}
+		}()
 
-    // Make a channel for results and start listening
-    entriesCh := make(chan *mdns.ServiceEntry, 4)
-    go func() {
-        for entry := range entriesCh {
-            fmt.Printf("Got new entry: %v\n", entry)
-        }
-    }()
+		fmt.Println("starting mdns query")
+		qp := &mdns.QueryParam{
+			Domain:  "local",
+			Entries: entriesCh,
+			Service: tag,
+			Timeout: time.Second * 5,
+		}
 
-    // Start the lookup
-    mdns.Lookup("_foobar._tcp", entriesCh)
-    close(entriesCh)
+		mdns.Query(qp)
+		close(entriesCh)
+		fmt.Println("mdns query complete")
 
+		select {
+		case <-ticker.C:
+			continue
+		}
+	}
+}
+
+func main() {
+	go run()
+	c := make(chan int)
+	<-c
+}
+
+```
