@@ -282,9 +282,7 @@ func (c *client) query(params *QueryParam) error {
 				m := new(dns.Msg)
 				m.SetQuestion(inp.Name, dns.TypePTR)
 				m.RecursionDesired = false
-				if err := c.sendQuery(m); err != nil {
-					logf("[ERR] mdns: Failed to query instance %s: %v", inp.Name, err)
-				}
+				c.sendQuery(m)
 			}
 		case <-finish:
 			return nil
@@ -316,12 +314,10 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 	for !c.getIsClosed() {
 		n, err := l.Read(buf)
 		if err != nil {
-			logf("[ERR] mdns: Failed to read packet: %v", err)
 			continue
 		}
 		msg := new(dns.Msg)
 		if err := msg.Unpack(buf[:n]); err != nil {
-			logf("[ERR] mdns: Failed to unpack packet: %v", err)
 			continue
 		}
 		select {
